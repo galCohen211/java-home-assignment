@@ -3,12 +3,15 @@ package com.example.leavemanagement;
 import com.example.leavemanagement.controller.LeaveRequestsController;
 import com.example.leavemanagement.dto.CreateLeaveRequestDto;
 import com.example.leavemanagement.model.Employee;
+import com.example.leavemanagement.model.LeaveRequest;
+import com.example.leavemanagement.model.LeaveStatus;
 import com.example.leavemanagement.model.LeaveType;
 import com.example.leavemanagement.repository.EmployeeRepository;
 import com.example.leavemanagement.repository.LeaveRequestRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -69,7 +72,71 @@ class LeaveRequestsTests {
         assertEquals(before + 1, leaveRequests.count());
     }
 
-    // TODO (candidate): add a test that proves the balance bug is fixed —
-    // an employee who has already used most of the quota should NOT be able
-    // to create a request that pushes them over the annual quota.
+    // Regression test for the balance bug: an employee who has already used most
+    // of the quota must NOT be able to create a request that pushes them over it.
+    @Test
+    void create_ExceedingQuota_ReturnsBadRequest() {
+        // Arrange
+        Employee emp = new Employee();
+        emp.setName("Test Emp Over Quota");
+        emp.setAnnualQuota(20);
+        employees.save(emp);
+
+        LeaveRequest approved = new LeaveRequest();
+        approved.setEmployeeId(emp.getId());
+        approved.setType(LeaveType.VACATION);
+        approved.setStartDate(LocalDate.of(2026, 1, 1));
+        approved.setEndDate(LocalDate.of(2026, 1, 18));
+        approved.setDays(18);
+        approved.setStatus(LeaveStatus.APPROVED);
+        leaveRequests.save(approved);
+
+        long before = leaveRequests.count();
+
+        CreateLeaveRequestDto dto = new CreateLeaveRequestDto();
+        dto.setEmployeeId(emp.getId());
+        dto.setType(LeaveType.VACATION);
+        dto.setStartDate(LocalDate.of(2026, 3, 1));
+        dto.setEndDate(LocalDate.of(2026, 3, 3)); // 3 days -> 18 + 3 = 21 > 20
+
+        // Act
+        ResponseEntity<?> result = controller.create(dto);
+
+        // Assert
+        assertEquals(HttpStatus.BAD_REQUEST, result.getStatusCode());
+        assertEquals(before, leaveRequests.count());
+    }
+
+    @Test
+    void create_ExactlyReachingQuota_Succeeds() {
+        // Arrange
+        Employee emp = new Employee();
+        emp.setName("Test Emp At Quota");
+        emp.setAnnualQuota(20);
+        employees.save(emp);
+
+        LeaveRequest approved = new LeaveRequest();
+        approved.setEmployeeId(emp.getId());
+        approved.setType(LeaveType.VACATION);
+        approved.setStartDate(LocalDate.of(2026, 1, 1));
+        approved.setEndDate(LocalDate.of(2026, 1, 18));
+        approved.setDays(18);
+        approved.setStatus(LeaveStatus.APPROVED);
+        leaveRequests.save(approved);
+
+        long before = leaveRequests.count();
+
+        CreateLeaveRequestDto dto = new CreateLeaveRequestDto();
+        dto.setEmployeeId(emp.getId());
+        dto.setType(LeaveType.VACATION);
+        dto.setStartDate(LocalDate.of(2026, 3, 1));
+        dto.setEndDate(LocalDate.of(2026, 3, 2)); // 2 days -> 18 + 2 = 20, exactly the quota
+
+        // Act
+        ResponseEntity<?> result = controller.create(dto);
+
+        // Assert
+        assertTrue(result.getStatusCode().is2xxSuccessful());
+        assertEquals(before + 1, leaveRequests.count());
+    }
 }
