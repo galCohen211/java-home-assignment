@@ -58,6 +58,13 @@ Add any missing imports. Do not change production code."
 **מה קיבלתי ומה עשיתי עם זה:**
 את הבאג עצמו איתרתי ותיקנתי בעצמי: הוספתי את `used` לתנאי שבודק את יתרת החופשה ב-Controller. ב-AI נעזרתי רק לכתיבת הטסטים. עברתי על הקוד שנוצר, וידאתי שהוא בודק גם חריגה מהמכסה וגם את מקרה הגבול שבו מגיעים בדיוק למכסה, והרצתי `mvn test`. כל הטסטים עברו.
 
+דוגמא נוספת:
+2. **prompt** (טסטים ל-approve):
+   "Add tests for approve in LeaveRequestsTests, same Arrange/Act/Assert style. Create a separate employee in each test (quota 20, 18 approved). Call the controller's approve() and check the status code: pending 2-day request -> 200 and status becomes APPROVED; already approved request -> 409; pending 3-day request (over quota) -> 409; non-existing id -> 404. Also add a concurrency test: two pending 2-day requests approved at the same time from two threads (use CountDownLatch). Exactly one should succeed and the total approved days must be 20. Don't change production code."
+
+   **מה קיבלתי ומה עשיתי עם זה:**
+   את המצבים הרגילים (200, 409, 404) בדקתי קודם ידנית ב-Swagger. את ה-race condition אי אפשר לבדוק ככה, כי אי אפשר לשלוח שני אישורים באותו רגע בדיוק. לכן ביקשתי מה-AI לכתוב טסט שמריץ שני אישורים בשני threads במקביל. קיבלתי טסטים לכל המצבים וטסט מקביליות. עברתי עליהם, וידאתי שמחלקת הטסטים לא מסומנת `@Transactional`, אחרת שני ה-threads לא היו מתחרים באמת, והרצתי `mvn test`.
+
 ### איפה דחיתי/תיקנתי הצעה של AI
 - מה AI הציע, למה זה היה שגוי, ומה עשיתי במקום:
 
