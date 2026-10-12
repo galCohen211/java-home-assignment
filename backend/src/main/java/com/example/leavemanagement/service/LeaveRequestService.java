@@ -34,6 +34,13 @@ public class LeaveRequestService {
         return leaveRequestRepository.findAllByOrderByStartDateDesc();
     }
 
+    // Partial match on the employee name. The name is bound as a query parameter,
+    // never concatenated into SQL.
+    @Transactional(readOnly = true)
+    public List<LeaveRequest> searchByEmployeeName(String name) {
+        return leaveRequestRepository.findByEmployeeNameContaining(name);
+    }
+
     @Transactional
     public LeaveRequest create(CreateLeaveRequestDto dto) {
         Employee employee = employeeRepository.findById(dto.getEmployeeId())

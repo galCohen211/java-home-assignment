@@ -32,8 +32,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // Runs against a real, throwaway PostgreSQL started by Testcontainers.
@@ -279,6 +281,39 @@ class LeaveRequestsTests {
                 .mapToInt(LeaveRequest::getDays)
                 .sum();
         assertEquals(20, approvedDays);
+    }
+
+    @Test
+    void search_PartialName_ReturnsMatchingRequests() throws Exception {
+        // Arrange
+        Employee emp = new Employee();
+        emp.setName("Searchable Zorkowski");
+        emp.setAnnualQuota(20);
+        employees.save(emp);
+        LeaveRequest request = saveVacation(emp, LocalDate.of(2026, 3, 1), 2, LeaveStatus.PENDING);
+
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/leave-requests/search").param("name", "Zork"));
+
+        // Assert
+        result.andExpect(status().isOk())
+              .andExpect(jsonPath("$.length()").value(1))
+              .andExpect(jsonPath("$[0].id").value(request.getId()));
+    }
+
+    // Regression test for SQL injection: with the old concatenated query this
+    // payload turned the WHERE clause into "always true" and returned every request.
+    @Test
+    void search_SqlInjectionPayload_ReturnsNoResults() throws Exception {
+        // Arrange: make sure there is data that a successful injection would expose.
+        employeeWith18ApprovedDays("Test Emp Injection");
+
+        // Act
+        ResultActions result = mockMvc.perform(get("/api/leave-requests/search").param("name", "' OR '1'='1"));
+
+        // Assert
+        result.andExpect(status().isOk())
+              .andExpect(jsonPath("$.length()").value(0));
     }
 
     private ResultActions postCreate(CreateLeaveRequestDto dto) throws Exception {

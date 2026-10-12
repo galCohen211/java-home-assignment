@@ -14,6 +14,9 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
 
     List<LeaveRequest> findAllByOrderByStartDateDesc();
 
+    // Derived query: LIKE '%' || :name || '%' with the value bound as a parameter.
+    List<LeaveRequest> findByEmployeeNameContaining(String name);
+
     List<LeaveRequest> findByEmployeeIdAndTypeAndStatus(Long employeeId, LeaveType type, LeaveStatus status);
 
     // Returns only the employeeId (not the whole request), so after the lock
