@@ -43,8 +43,6 @@
 
 ## 5. שימוש ב‑AI
 ### איפה AI עזר (כולל prompts)
-1. prompt: "..." → מה קיבלתי ומה עשיתי איתו:
-2. ...
 
 Prompt:
 "Add the regression test requested by the TODO in LeaveRequestsTests.
