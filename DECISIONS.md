@@ -1,0 +1,89 @@
+<div dir="rtl">
+
+# DECISIONS
+
+> מלאו את הקובץ הזה. הוא חלק מההערכה — קצר וברור עדיף על ארוך.
+
+## 1. החלטות ארכיטקטוניות
+- **חלוקה לשכבות:** ה-controller רק מקבל בקשה ומחזיר תשובה. כל הלוגיקה (בדיקת יתרה, אישור, נעילה) עברה ל-`LeaveRequestService`, והשאילתות נשארו ב-repositories.
+- **שגיאות:** ה-service זורק exceptions ולא מחזיר קודי HTTP. יש `GlobalExceptionHandler` אחד שהופך אותם ל-404, 409 או 400, במקום try/catch בכל endpoint.
+- **ולידציה:** הוספתי בדיקות על ה-DTO: שדות חובה, ושתאריך ההתחלה לא אחרי תאריך הסיום. ככה כבר אי אפשר ליצור בקשה עם מספר ימים שלילי, שאחרי אישור הייתה מגדילה את היתרה.
+
+## 2. הבאג ביתרת החופשה
+  התחלתי מהתיאור במשימה: עובד מצליח להגיש בקשה שחורגת מהמכסה. חיפשתי בקוד את הפונקציה שיוצרת בקשה, `create` ב-`LeaveRequestsController`, ועברתי על הבדיקה שהיא עושה לפני השמירה.
+  ראיתי שהקוד מחשב את `used`, כמה ימי חופשה כבר אושרו לעובד, אבל לא משתמש בו. התנאי בדק רק `days > annualQuota`, כלומר אם הבקשה לבדה גדולה מכל המכסה. כך עובדת עם מכסה של 20 ו-18 ימים מאושרים יכלה להגיש עוד 3 ימים.
+  התיקון: שיניתי את התנאי ל-`used + days > annualQuota`. 
+
+  - **הטסט שמוכיח את התיקון:**
+  הוספתי ל-`LeaveRequestsTests` (Testcontainers מול Postgres אמיתי) שני טסטים:
+  - `create_ExceedingQuota_ReturnsBadRequest`: 18 מאושרים ועוד 3, מחזיר 400 ולא נשמרת בקשה.
+  - `create_ExactlyReachingQuota_Succeeds`: 18 ועוד 2, בדיוק 20, ועובר. זה מקרה הגבול.
+  כל טסט יוצר עובד משלו, כדי לא להיות תלוי ב-DataSeeder.
+
+## 3. אישור בקשה (approve) ו‑concurrency
+- **איך טיפלתי במצבים לא חוקיים (כבר אושר / לא קיים):**
+  העברתי את הלוגיקה של האישור ל-`LeaveRequestService`. אם הבקשה לא קיימת מוחזר 404. אם היא כבר לא PENDING (אושרה או נדחתה) מוחזר 409. גם כשאין מספיק ימים בזמן האישור החזרתי 409, כי הבקשה עצמה תקינה, פשוט היא מתנגשת עם מה שכבר אושר. את היתרה בודקים רק לחופשה (VACATION).
+
+- **מה לגבי אישור של שתי בקשות במקביל:**
+  הבעיה שראיתי: אם לעובדת יש 18 ימים מאושרים ושתי בקשות של 2 ימים, ומאשרים את שתיהן באותו רגע, שתיהן יראו שנוצלו רק 18 ויאושרו. בסוף יהיו לה 22 ימים מתוך 20.
+  פתרתי את זה עם נעילה על השורה של העובד (`PESSIMISTIC_WRITE`, כלומר `SELECT ... FOR UPDATE`) בתוך טרנזקציה. ככה אישורים של אותו עובד מחכים אחד לשני, ועובדים שונים לא מפריעים זה לזה.
+  הקפדתי על הסדר: קודם אני לוקחת רק את ה-id של העובד, אחר כך נועלת אותו, ורק אז טוענת את הבקשה ובודקת סטטוס ויתרה. ככה הבדיקה תמיד על נתונים עדכניים. זה מטפל גם במקרה שבו לוחצים פעמיים על אישור לאותה בקשה: הלחיצה השנייה מחכה, רואה שהבקשה כבר אושרה ומקבלת 409.
+  ביצירת בקשה לא שמתי נעילה, כי שם נוצרת רק בקשה ממתינה, והבדיקה הקובעת היא באישור.
+  בדקתי ידנית ב-Swagger את כל המצבים: אישור תקין (200), אישור שחורג מהיתרה (409), אישור כפול של אותה בקשה (409) ובקשה שלא קיימת (404).
+  את ה-race condition אי אפשר לבדוק ב-Swagger, אז הוספתי טסט שמריץ שני אישורים בשני threads באותו רגע. הטסט בודק שרק אחד מהם עובר, ושסכום הימים המאושרים נשאר 20.
+
+## 4. על מה ויתרתי בגלל הזמן
+- **סינון לפי שנה:** היתרה נספרת מכל השנים, למרות שהמכסה שנתית. הייתי מסננת לפי השנה של תאריך הבקשה.
+- **בקשות ממתינות:** לא נספרות ביתרה בזמן היצירה, כך שאפשר להגיש הרבה בקשות. המכסה נאכפת רק באישור.
+- **הזדהות והרשאות:** כרגע כל אחד יכול לאשר בקשות. הייתי מוסיפה Spring Security, כך שרק מנהל יוכל לאשר.
+- **חיפוש:** כרגע תלוי באותיות גדולות וקטנות. הייתי מחליפה ל-`ContainingIgnoreCase`.
+- **פרונט:** הספקתי את טופס הגשת הבקשה (משימה 4), כולל service עם טיפוסים לקריאות ה-API, כך שהקומפוננטה כבר לא משתמשת ב-`HttpClient` ישירות ולא ב-`any` (חלק ממשימה 6). עם עוד זמן הייתי:
+  - **כפתור האישור (משימה 5):** מצב טעינה על הכפתור, הודעת שגיאה כשהאישור נכשל, הודעת הצלחה, ועדכון רק של השורה שאושרה במקום רענון של כל הרשימה.
+  - **ניקוי subscriptions (שאר משימה 6):** להשתמש ב-`takeUntilDestroyed` או ב-`async` pipe, כדי שלא יישארו subscriptions פתוחים.
+
+## 5. שימוש ב‑AI
+### איפה AI עזר (כולל prompts)
+
+Prompt:
+"Add the regression test requested by the TODO in LeaveRequestsTests.
+Follow the existing Arrange/Act/Assert style of create_WithinQuota_Succeeds.
+
+Scenario: employee with annualQuota 20 and an APPROVED VACATION request of 18 days
+(save it via LeaveRequestRepository). Then submit a new 3-day VACATION request
+through controller.create().
+
+Assert:
+- HTTP 400
+- leaveRequests.count() is unchanged (compare before/after, don't assume an empty table —
+  DataSeeder and other tests share the same database)
+
+Also add a boundary test: 18 approved + 2-day request (exactly 20) must succeed.
+
+Create the employee inside each test (don't rely on seeded data).
+Add any missing imports. Do not change production code."
+**מה קיבלתי ומה עשיתי עם זה:**
+את הבאג עצמו איתרתי ותיקנתי בעצמי: הוספתי את `used` לתנאי שבודק את יתרת החופשה ב-Controller. ב-AI נעזרתי רק לכתיבת הטסטים. עברתי על הקוד שנוצר, וידאתי שהוא בודק גם חריגה מהמכסה וגם את מקרה הגבול שבו מגיעים בדיוק למכסה, והרצתי `mvn test`. כל הטסטים עברו.
+
+דוגמא נוספת:
+2. **prompt** (טסטים ל-approve):
+   "Add tests for approve in LeaveRequestsTests, same Arrange/Act/Assert style. Create a separate employee in each test (quota 20, 18 approved). Call the controller's approve() and check the status code: pending 2-day request -> 200 and status becomes APPROVED; already approved request -> 409; pending 3-day request (over quota) -> 409; non-existing id -> 404. Also add a concurrency test: two pending 2-day requests approved at the same time from two threads (use CountDownLatch). Exactly one should succeed and the total approved days must be 20. Don't change production code."
+
+   **מה קיבלתי ומה עשיתי עם זה:**
+   את המצבים הרגילים (200, 409, 404) בדקתי קודם ידנית ב-Swagger. את ה-race condition אי אפשר לבדוק ככה, כי אי אפשר לשלוח שני אישורים באותו רגע בדיוק. לכן ביקשתי מה-AI לכתוב טסט שמריץ שני אישורים בשני threads במקביל. קיבלתי טסטים לכל המצבים וטסט מקביליות. עברתי עליהם, וידאתי שמחלקת הטסטים לא מסומנת `@Transactional`, אחרת שני ה-threads לא היו מתחרים באמת, והרצתי `mvn test`.
+
+### איפה דחיתי/תיקנתי הצעה של AI
+כשביקשתי מה-AI לממש את approve, הוא החזיר את קודי השגיאה (404/409) עם try/catch בתוך ה-controller. זה עבד, אבל זה בדיוק מה שמשימה 3 ביקשה לסדר: ה-controller צריך רק להעביר בקשות, ולא לטפל בשגיאות. ובנוסף, כל endpoint חדש היה צריך את אותו try/catch.
+לא השארתי את זה. בפרומפט הבא ביקשתי להוריד את ה-try/catch ולטפל בכל השגיאות במקום אחד, עם @RestControllerAdvice.
+
+### אבטחה
+- **מה מצאתי:** SQL injection ב-endpoint של החיפוש לפי שם עובד.
+- **איפה:** `LeaveRequestsController.java`, במתודה `search` (שורות 47–58 בקוד המקורי, ובעיקר שורה 51). השאילתה נבנתה בשרשור מחרוזות: `"... WHERE name LIKE '%" + name + "%'"`.
+- **למה זו בעיה:** מה שהמשתמש כותב בשדה `name` נכנס ישירות לתוך ה-SQL. אם שולחים למשל `' OR '1'='1`, השאילתה מחזירה את כל הבקשות של כל העובדים. עם קלט אחר אפשר גם לקרוא טבלאות אחרות, או לשנות ולמחוק נתונים.
+- **איך תיקנתי:** העברתי את החיפוש ל-repository עם שאילתה עם פרמטר, כך שהקלט נשלח ל-DB כערך ולא כחלק מה-SQL. הוספתי טסט שבודק ששליחת `' OR '1'='1` לא מחזירה תוצאות.
+- **עוד דברים ששמתי לב אליהם ולא טיפלתי בהם:** אין בכלל הזדהות והרשאות, כך שכל אחד יכול לאשר בקשות. הסיסמה של ה-DB כתובה ישירות ב-`docker-compose.yml`.
+
+## 6. הוראות הרצה
+- (אם שיניתם משהו מהוראות ה‑README המקורי)
+- עם Docker Desktop חדש, Testcontainers 1.20.2 נכשל ב-"Could not find a valid Docker environment". פתרון: `echo "api.version=1.44" > ~/.docker-java.properties`
+
+</div>

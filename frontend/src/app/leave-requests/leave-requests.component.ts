@@ -1,23 +1,26 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { LeaveRequest } from '../models/leave-request.model';
+import { LeaveApiService } from './leave-api.service';
+import { LeaveRequestFormComponent } from './leave-request-form/leave-request-form.component';
 
-// NOTE: This component was written quickly for a POC.
-// It talks to the API directly, manages state by hand and uses `any` everywhere.
+// Newest start date first, matching the order the API returns.
+function byStartDateDesc(a: LeaveRequest, b: LeaveRequest): number {
+  return b.startDate.localeCompare(a.startDate);
+}
+
 @Component({
   selector: 'app-leave-requests',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LeaveRequestFormComponent],
   templateUrl: './leave-requests.component.html',
   styleUrls: ['./leave-requests.component.css']
 })
 export class LeaveRequestsComponent implements OnInit {
-  requests: any[] = [];
+  requests: LeaveRequest[] = [];
   loading = false;
 
-  private apiUrl = 'http://localhost:5080/api/leave-requests';
-
-  constructor(private http: HttpClient) {}
+  constructor(private api: LeaveApiService) {}
 
   ngOnInit(): void {
     this.load();
@@ -25,17 +28,22 @@ export class LeaveRequestsComponent implements OnInit {
 
   load(): void {
     this.loading = true;
-    this.http.get<any>(this.apiUrl).subscribe((data) => {
+    this.api.getLeaveRequests().subscribe((data) => {
       this.requests = data;
       this.loading = false;
     });
+  }
+
+  // Insert the new request in place instead of reloading the whole list.
+  onCreated(request: LeaveRequest): void {
+    this.requests = [...this.requests, request].sort(byStartDateDesc);
   }
 
   // Wired up by the candidate as part of the assignment.
   approve(id: number): void {
     // TODO (candidate): call POST /api/leave-requests/{id}/approve
     // and handle loading / error / success without a generic alert.
-    this.http.post<any>(this.apiUrl + '/' + id + '/approve', {}).subscribe(() => {
+    this.api.approve(id).subscribe(() => {
       this.load();
     });
   }
