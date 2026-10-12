@@ -1,0 +1,54 @@
+<form class="new-request" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <h3>New request</h3>
+
+  <div class="field">
+    <label for="employeeId">Employee</label>
+    <select id="employeeId" formControlName="employeeId" [attr.aria-invalid]="showError('employeeId')">
+      <option [ngValue]="null" disabled>
+        {{ employeesLoading ? 'Loading employees…' : 'Select an employee' }}
+      </option>
+      <option *ngFor="let e of employees" [ngValue]="e.id">{{ e.name }}</option>
+    </select>
+    <div class="error" *ngIf="showError('employeeId')">Employee is required.</div>
+    <div class="error" *ngIf="employeesError">
+      {{ employeesError }}
+      <button type="button" class="link" (click)="loadEmployees()">Retry</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="type">Leave type</label>
+    <select id="type" formControlName="type" [attr.aria-invalid]="showError('type')">
+      <option [ngValue]="null" disabled>Select a type</option>
+      <option *ngFor="let t of leaveTypes" [ngValue]="t.value">{{ t.label }}</option>
+    </select>
+    <div class="error" *ngIf="showError('type')">Leave type is required.</div>
+  </div>
+
+  <div class="field">
+    <label for="startDate">Start date</label>
+    <input id="startDate" type="date" formControlName="startDate" [attr.aria-invalid]="showError('startDate')" />
+    <div class="error" *ngIf="showError('startDate')">Start date is required.</div>
+  </div>
+
+  <div class="field">
+    <label for="endDate">End date</label>
+    <input id="endDate" type="date" formControlName="endDate"
+           [attr.aria-invalid]="showError('endDate') || showDateRangeError" />
+    <div class="error" *ngIf="showError('endDate')">End date is required.</div>
+    <div class="error" *ngIf="showDateRangeError">End date must be on or after the start date.</div>
+  </div>
+
+  <div class="days" *ngIf="days !== null">
+    {{ days }} calendar {{ days === 1 ? 'day' : 'days' }}
+  </div>
+
+  <div class="actions">
+    <button type="submit" [disabled]="submitting">
+      {{ submitting ? 'Submitting…' : 'Submit request' }}
+    </button>
+  </div>
+
+  <div class="error" role="alert" *ngIf="submitError">{{ submitError }}</div>
+  <div class="success" role="status" *ngIf="successMessage">{{ successMessage }}</div>
+</form>
