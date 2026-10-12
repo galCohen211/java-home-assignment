@@ -12,6 +12,8 @@ import java.util.Optional;
 
 public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long> {
 
+    List<LeaveRequest> findAllByOrderByStartDateDesc();
+
     List<LeaveRequest> findByEmployeeIdAndTypeAndStatus(Long employeeId, LeaveType type, LeaveStatus status);
 
     // Returns only the employeeId (not the whole request), so after the lock
